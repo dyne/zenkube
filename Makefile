@@ -45,6 +45,11 @@ deploy-cartridge: ## Helm install cartridge
 list-pods: ## List all pods in our namespace
 	kubectl get pods --namespace ${NAMESPACE}
 
-#make helm-install-cartridge-app
 
-#kubectl get pods --namespace tarantool-app
+##@ Teardown
+uninstall-operator: # remove the operator deployed
+	helm uninstall -n ${NAMESPACE} operator
+
+uninstall-cartridge: # remove the cartridge app
+	helm uninstall -n ${NAMESPACE} example-app
+
