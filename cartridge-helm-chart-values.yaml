@@ -7,9 +7,9 @@ TarantoolWorkDir: /var/lib/tarantool
 LuaMemoryReserveMB: 2048
 
 image:
-  repository: tarantool/tarantool-operator-examples-kv
-  tag: 0.0.2
-  pullPolicy: IfNotPresent
+  repository: dyne/tarantool-hello
+  tag: latest # change to semver when stable
+  pullPolicy: Always # Change to IfNotPresent when stable
 
 service:
   type: ClusterIP

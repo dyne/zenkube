@@ -9,6 +9,8 @@ CHARTS_DIR := $(shell pwd)/tarantool-operator/helm-charts
 REPO := dyne/tarantool-operator
 VERSION := 0.0.9-dyne
 NAMESPACE := tarantool
+DOCKER_BASE := dyne/tarantool:centos8
+DOCKER_TARGET := dyne/zenswarm:${VERSION}
 
 show-config: ## Show the current configuration
 	@echo "NAMESPACE: ${NAMESPACE}"
@@ -16,6 +18,13 @@ show-config: ## Show the current configuration
 	@echo "CHARTS: ${CHARTS_DIR}"
 
 ##@ Initialize
+
+install-deps: ## install dependencies: golang, kubectl, helm (needs root)
+	@apt-get install -y golang kubernetes-client
+	@if ! command -v helm; then curl -sL https://get.helm.sh/helm-v3.7.2-linux-amd64.tar.gz -o - \
+				> helm-v3.7.2-linux-amd64.tar.gz \
+	      && tar -xf helm-v3.7.2-linux-amd64.tar.gz \
+	      && mv linux-amd64/helm /usr/local/bin/ && chmod +x /usr/local/bin/helm; fi
 
 download: ## clone tarantool-operator from github
 	if [ ! -r tarantool-operator ]; then git clone ${SOURCE}; fi
@@ -42,9 +51,15 @@ deploy-operator: ## Helm install operator
 deploy-cartridge: ## Helm install cartridge
 	cp -v cartridge-helm-chart-values.yaml \
 	 ${CHARTS_DIR}/tarantool-cartridge/values.yaml
-	helm install -n ${NAMESPACE} example-app $(CHARTS_DIR)/tarantool-cartridge \
+	helm install -n ${NAMESPACE} zenswarm $(CHARTS_DIR)/tarantool-cartridge \
 		--create-namespace \
 		--set LuaMemoryReserveMB=0 # default reserve too large
+
+remove-operator: ## helm uninstall operator
+	helm uninstall -n ${NAMESPACE} operator
+
+remove-cartridge: ## helm uninstall cartridge
+	helm uninstall -n ${NAMESPACE} example-app
 
 ##@ Cluster administration
 list: ## List all in our namespace
@@ -56,10 +71,6 @@ list-pods: ## List pods in our namespace
 list-all: ## List all in all namespaces
 	kubectl get all --all-namespaces
 
-##@ Teardown
-uninstall-operator: # remove the operator deployed
-	helm uninstall -n ${NAMESPACE} operator
-
-uninstall-cartridge: # remove the cartridge app
-	helm uninstall -n ${NAMESPACE} example-app
+open-localhost: ## Open access from localhost (Ctrl-C to stop)
+	kubectl port-forward routers-0-0 -n ${NAMESPACE} --address 0.0.0.0 8081
 
