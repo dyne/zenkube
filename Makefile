@@ -10,6 +10,11 @@ REPO := dyne/tarantool-operator
 VERSION := 0.0.9-dyne
 NAMESPACE := tarantool
 
+show-config: ## Show the current configuration
+	@echo "NAMESPACE: ${NAMESPACE}"
+	@echo "SOURCE: ${SOURCE}"
+	@echo "CHARTS: ${CHARTS_DIR}"
+
 ##@ Initialize
 
 download: ## clone tarantool-operator from github
@@ -42,9 +47,14 @@ deploy-cartridge: ## Helm install cartridge
 		--set LuaMemoryReserveMB=0 # default reserve too large
 
 ##@ Cluster administration
-list-pods: ## List all pods in our namespace
+list: ## List all in our namespace
+	kubectl get all --namespace ${NAMESPACE}
+
+list-pods: ## List pods in our namespace
 	kubectl get pods --namespace ${NAMESPACE}
 
+list-all: ## List all in all namespaces
+	kubectl get all --all-namespaces
 
 ##@ Teardown
 uninstall-operator: # remove the operator deployed
