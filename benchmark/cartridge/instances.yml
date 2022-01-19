@@ -1,24 +1,24 @@
 ---
-zvmlet.router:
+benchmark.router:
   advertise_uri: localhost:3301
   http_port: 8081
 
-zvmlet.s1-master:
+benchmark.s1-master:
   advertise_uri: localhost:3302
   http_port: 8082
 
-zvmlet.s1-replica:
+benchmark.s1-replica:
   advertise_uri: localhost:3303
   http_port: 8083
 
-zvmlet.s2-master:
+benchmark.s2-master:
   advertise_uri: localhost:3304
   http_port: 8084
 
-zvmlet.s2-replica:
+benchmark.s2-replica:
   advertise_uri: localhost:3305
   http_port: 8085
 
-zvmlet-stateboard:
+benchmark-stateboard:
   listen: localhost:4401
   password: passwd

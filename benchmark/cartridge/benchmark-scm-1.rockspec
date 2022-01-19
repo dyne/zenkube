@@ -1,4 +1,4 @@
-package = 'zvmlet'
+package = 'benchmark'
 version = 'scm-1'
 source  = {
     url = '/dev/null',
