@@ -1,6 +1,8 @@
-# Oracle Swarm
+# Zenswarm
 
-WIP
+Orchestrating VMlets as a Swarm of Oracles
+
+![image](https://user-images.githubusercontent.com/148059/149499339-af8c430d-6d3c-4dd7-9029-6bf514867b56.png)
 
 # Requirements
 
