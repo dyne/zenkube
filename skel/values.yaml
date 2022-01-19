@@ -1,7 +1,7 @@
 # Declare variables to be passed into your templates.
 
 ClusterEnv: dev
-ClusterName: zenswarm
+ClusterName: tarantool-cluster
 ClusterDomainName: cluster.local
 TarantoolWorkDir: /var/lib/tarantool
 LuaMemoryReserveMB: 2048
