@@ -32,3 +32,25 @@ make list pods
 
 [cartridge values.yaml](cartridge-helm-chart-values.yaml)
 
+# Host setup
+
+## minik8s
+
+On a Debian or Ubuntu with "snapd" installed:
+
+```
+snap install core
+snap install microk8s --classic
+microk8s status
+microk8s enable helm
+microk8s enable storage
+microk8s enable dns
+microk8s enable ingress
+microk8s enable registry
+```
+
+Then to export credentials
+```
+microk8s config > ~/.kube/config (for clients)
+microk8s.kubectl config view > $HOME/.kube/config
+```
