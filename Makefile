@@ -46,6 +46,11 @@ install-kube: ## Helm install operator on Kubernetes
 uninstall-kube: ## Helm uninstall operator on Kubernetes
 	helm uninstall -n ${NAMESPACE} operator
 
+uninstall-all: ## Helm uninstall all apps
+	for i in $(basename ${APPS}); do \
+	helm status -n ${NAMESPACE} $$i \
+	&& helm uninstall -n ${NAMESPACE} $$i; done
+
 ##@ Cluster administration
 list: ## List all in our namespace
 	kubectl get all --namespace ${NAMESPACE}
@@ -56,29 +61,30 @@ list-pods: ## List pods in our namespace
 list-all: ## List all in all namespaces
 	kubectl get all --all-namespaces
 
+logs: PODS := $(call list-pods)
 logs:
-	@kubectl logs routers-0-0 --namespace ${NAMESPACE}
-	@kubectl logs storage-0-0 --namespace ${NAMESPACE}
+	@for i in ${PODS}; do \
+	echo "LOG: \033[36m$$i\033[0m"; \
+	kubectl logs $$i --namespace ${NAMESPACE}; \
+	echo; done
 
 open-localhost: ## Open access from localhost (Ctrl-C to stop)
 	kubectl port-forward routers-0-0 -n ${NAMESPACE} --address 0.0.0.0 8081
 
-create-app = mkdir -p ${1}/chart \
-	&& sed -e "s/@@APPNAME@@/${1}/g" skel/Makefile > ${1}/Makefile \
-	&& sed -e "s/@@APPNAME@@/${1}/g" skel/chart/Chart.yaml \
-	|  sed -e "s/@@VERSION@@/${VERSION}/g" > ${1}/chart/Chart.yaml \
-	&& sed -e "s/@@APPNAME@@/${1}/g" skel/chart/values.yaml \
-	|  sed -e "s/@@VERSION@@/${VERSION}/g" > ${1}/chart/values.yaml \
-	&& cp -ra skel/chart/templates ${1}/chart/
-
 ##@ App administration
 create: ## Create a new app with NAME
 	$(if ${NAME},,$(error "app NAME undefined"))
-	$(if $(wildcard ${NAME}), $(error "cannot overwrite app: ${NAME}"))
-	@echo "Zenswarm create new app: ${NAME}"
+	$(if $(wildcard ${NAME}.app), $(error "cannot overwrite app: ${NAME}.app"))
+	@echo "Zenswarm create new app: ${NAME}.app"
 	@$(call create-app,${NAME},${VERSION})
-	cartridge create ${NAME} --name ${NAME} \
-	&& mv ${NAME}/${NAME} ${NAME}/cartridge
-	@echo "FROM centos:8" > ${NAME}/cartridge/Dockerfile.build.cartridge
-	@echo "FROM dyne/tarantool:centos8" > ${NAME}/cartridge/Dockerfile.cartridge
+	cartridge create ${NAME}.app --name ${NAME} \
+	&& mv ${NAME}.app/${NAME} ${NAME}.app/cartridge
+	@echo "FROM centos:7" > ${NAME}.app/cartridge/Dockerfile.build.cartridge
+	@echo "FROM dyne/tarantool:centos8" > ${NAME}.app/cartridge/Dockerfile.cartridge
+	@ln -s cartridge/app/roles/custom.lua ${NAME}.app/main.lua
 
+defaults: ## Reset defaults in an existing app with NAME
+	$(if ${NAME},,$(error "app NAME undefined"))
+	$(if $(wildcard ${NAME}.app),, $(error "Cannot find app: ${NAME}.app"))
+	@echo "Zenswarm reset app: ${NAME}.app"
+	@$(call create-app,${NAME},${VERSION})
