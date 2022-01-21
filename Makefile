@@ -9,7 +9,6 @@ help: ## Display this help.
 show-config: ## Show the current configuration
 	@echo "VERSION: ${VERSION}"
 	@echo "APP DOCKER: ${APP_DOCKER_URL}/APP-name:${APP_DOCKER_VER}"
-##@ Initialize
 
 install-deps: ## install dependencies: golang, kubectl, helm (needs root)
 	@apt-get install -y golang kubernetes-client
@@ -19,22 +18,24 @@ install-deps: ## install dependencies: golang, kubectl, helm (needs root)
 	&& tar -xf helm-v3.7.2-linux-amd64.tar.gz \
 	&& mv linux-amd64/helm /usr/local/bin/ && chmod +x /usr/local/bin/helm; fi
 
-download: SOURCE := https://github.com/tarantool/tarantool-operator
-download: ## clone tarantool-operator from github
+##@ Cluster setup
+
+op-download: SOURCE := https://github.com/tarantool/tarantool-operator
+op-download: ## clone tarantool-operator from github
 	if [ ! -r tarantool-operator ]; then git clone ${SOURCE}; \
 	else cd tarantool-operator && git checkout . && git pull --rebase; fi
 
-build: ## Build docker image
+op-build: ## Build docker image
 	REPO=${OPREPO} VERSION=${OPVER} \
 	 make -C tarantool-operator build
 	REPO=${OPREPO} VERSION=${OPVER} \
 	 make -C tarantool-operator docker-build
 
-docker-push: ## Push docker to repo (default needs credentials)
+op-push: ## Push docker to repo (default needs credentials)
 	docker push ${OPREPO}:${OPVER}
 
-install-kube: OPCHART := tarantool-operator/helm-charts/tarantool-operator
-install-kube: ## Helm install operator on Kubernetes
+op-install: OPCHART := tarantool-operator/helm-charts/tarantool-operator
+op-install: ## Helm install operator on Kubernetes
 	sed -e "s/@@VERSION@@/0.0.9-dyne/g" \
 	skel/operator-values.yaml > ${OPCHART}/values.yaml
 	helm install -n ${OPNS} operator ${OPCHART} \
@@ -42,16 +43,19 @@ install-kube: ## Helm install operator on Kubernetes
 		--set image.repository=${OPREPO} \
 		--set image.tag=${OPVER}
 
-uninstall-kube: ## Helm uninstall operator on Kubernetes
+op-uninstall: ## Helm uninstall operator on Kubernetes
 	helm uninstall -n ${OPNS} operator
 
-uninstall-all: ## Helm uninstall all apps
+op-restart: uninstall-kube install-kube ## Helm restart operator
+
+uninstall-all: # Helm uninstall all apps
 	for i in $(basename ${APPS}); do \
 	helm status -n zenswarm-$$i $$i \
 	&& helm uninstall -n zenswarm-$$i $$i; done
 	helm uninstall -n ${OPNS} operator
 
 ##@ Cluster administration
+
 list: ## List all apps in our namespaces
 	@for i in $(basename ${APPS}); do \
 		echo "APP: \033[36m$$i\033[0m"; \
@@ -67,7 +71,7 @@ list-pods: ## List pods in our namespace
 list-all: ## List all in all namespaces
 	kubectl get all --all-namespaces
 
-logs:
+logs: ## Show logs for all running APPs
 	@for i in $(basename ${APPS}); do \
 		echo "APP: \033[36m$$i\033[0m"; \
 		pods=`kubectl get pods --namespace zenswarm-$$i | awk '/^NAME/{next} /^controller/{next} {print $$1}'`; \
@@ -78,17 +82,18 @@ logs:
 		echo $$pods; \
 	done
 
-app-port-forward: app-check ## Open access to APP via localhost (Ctrl-C to stop)
-	kubectl port-forward routers-0-0 -n zenswarm-${APP} --address 0.0.0.0 8081
+##@ App management
 
 app-check:
 	$(if ${APP},,$(error "APP name undefined"))
-	$(if $(wildcard ${APP}.app),, $(error "Cannot find app: ${APP}.app"))
+	$(if $(wildcard ${APP}.app),,$(error "Cannot find app: ${APP}.app"))
+	@echo "APP:  \033[36m${APP}\033[0m"
+	@echo "TAG: `cat ${APP}.app/tag.sha`" $(file <${APP}.app/tag.sha)
 
 app-hash: app-check
-	@find ${APP}.app/cartridge -type f -print0 | sort -z | \
-		xargs -0 sha1sum | sha1sum | awk '{print $$1}' > ${APP}.app/tag.sha
-	@echo "APP ${APP} tag:" && cat ${APP}.app/tag.sha
+	find ${APP}.app/cartridge -type f -print0 | sort -z | \
+		xargs -0 sha1sum | sha1sum | awk '{print $$1}' | tee > ${APP}.app/tag.sha
+	@echo "NEW: " $(file <${APP}.app/tag.sha)
 
 app-check-empty:
 	$(if ${APP},,$(error "APP name undefined"))
@@ -110,20 +115,17 @@ app-create-chart:
 	| sed -e "s/@@VERSION@@/${VERSION}/g" > ${APP}.app/chart/values.yaml
 	@cp -ra skel/chart/templates ${APP}.app/chart/
 
-##@ App management
-
 app-create: app-check-empty app-create-cartridge app-hash ## Create a new app with APP
 
 app-defaults: app-check app-create-chart ## Reset defaults in an existing app with APP
 	@echo "Zenswarm reset app: ${APP}.app"
 
-app-build: app-hash
 app-build: APP_HASH := $(file <${APP}.app/tag.sha)
-app-build: ## Build Docker image from APP/cartridge
+app-build: app-check ## Build Docker image from APP/cartridge
 	sed -i -e "0,/ZENSWARM_TAG/{s/ZENSWARM_TAG.*/ZENSWARM_TAG='${APP_HASH}'/}" \
 	${APP}.app/cartridge/app/roles/custom.lua
 	cartridge pack docker ${APP}.app/cartridge \
-	 --tag dyne/zenswarm-${APP}:${APP_HASH} --verbose
+	 --tag dyne/zenswarm-${APP}:${APP_HASH}
 	@echo "Zenswarm build app: dyne/zenswarm-${APP}:${APP_HASH}"
 
 app-push: APP_HASH := $(file <${APP}.app/tag.sha)
@@ -135,20 +137,30 @@ app-install: app-check ## Install the Helm APP/chart in namespace zenswarm-APP
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
 	helm install -n zenswarm-${APP} ${APP} ${APP}.app/chart --create-namespace 
 
+app-port-fwd: app-check ## Open access to APP via localhost (Ctrl-C to stop)
+	kubectl port-forward routers-0-0 -n zenswarm-${APP} --address 0.0.0.0 8081
+
 app-list: app-check
 	kubectl get all --namespace zenswarm-${APP};
 
-#--set LuaMemoryReserveMB=${RESMB}
+app-logs: app-check ## Show logs of all running pods of APP
+	@pods=`kubectl get pods --namespace zenswarm-${APP} | awk '/^NAME/{next} /^controller/{next} {print $$1}'`; \
+	for p in $$pods; do \
+		echo "pod: \033[36m$$p\033[0m"; \
+		kubectl logs $$p --namespace zenswarm-${APP}; \
+	done
+
+app-restart: app-uninstall app-install
 
 app-upgrade: APP_HASH := $(file <${APP}.app/tag.sha)
-app-upgrade: app-check ## Upgrade the Helm APP/chart in namespace zenswarm-APP
+app-upgrade: app-check
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
 	helm upgrade -n zenswarm-${APP} @{APP} ${APP}.app/chart \
 	--set image.tag=${APP_HASH} --set imagePullPolicy=Always \
-	--dependency-update --devel
+	--recreate-pods
 
-app-upgrade-force: APP_HASH := $(file <${APP}.app/tag.sha)
-app-upgrade-force: app-check ## Upgrade the Helm APP/chart in namespace zenswarm-APP
+app-upgrade-f: APP_HASH := $(file <${APP}.app/tag.sha)
+app-upgrade-f: app-check
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
 	helm upgrade -n zenswarm-${APP} ${APP} ${APP}.app/chart \
 	--set image.tag=${APP_HASH} --set imagePullPolicy=Always --create-namespace \
@@ -160,5 +172,5 @@ app-status: app-check ## Check the status of installed APP
 app-uninstall: ## Uninstall the APP
 	helm uninstall -n zenswarm-${APP} ${APP}
 
-app-uninstall-force:
-	helm delete zenswarm-${APP} --purge --no-hooks
+app-uninstall-f: ## Force uninstall the APP (--no-hooks)
+	helm uninstall -n zenswarm-${APP} ${APP} --no-hooks
