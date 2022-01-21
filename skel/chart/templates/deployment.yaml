@@ -72,6 +72,7 @@ spec:
       containers:
         - name: pim-storage
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+	  imagePullPolicy: "{{ $.Values.image.pullPolicy }}"
           volumeMounts:
             - name: www
               mountPath: "{{ $.Values.TarantoolWorkDir }}"
