@@ -7,9 +7,9 @@ TarantoolWorkDir: /var/lib/tarantool
 LuaMemoryReserveMB: 2048
 
 image:
-  repository: dyne/tarantool-hello
-  tag: latest # change to semver when stable
-  pullPolicy: Always # Change to IfNotPresent when stable
+  repository: dyne/zenswarm-benchmark
+  tag: 358129a1efb838291796017deca7d037f4965fff
+  pullPolicy: Always
 
 service:
   type: ClusterIP
@@ -26,7 +26,9 @@ RoleConfig:
     DiskSize: 1Gi         # Persistent Volume disk sze
     CPUallocation: 0.25   # Number of vCPUs to allocate to each container
     MemtxMemoryMB: 256    # MB of memory to be assigned to each container
-    RolesToAssign: router # period `.` seperated list of cartridge roles to assign
+    RolesToAssign:
+      - app.roles.custom
+      - router
 
   - RoleName: storage
     ReplicaCount: 2
@@ -35,4 +37,5 @@ RoleConfig:
     CPUallocation: 0.25
     MemtxMemoryMB: 256
     RolesToAssign:
+      - app.roles.custom
       - storage
