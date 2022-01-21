@@ -1,10 +1,11 @@
 include config.mk
+include build/cluster.mk
 
 ##@ General
 
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' Makefile
-#	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' benchmark/Makefile
+	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' build/cluster.mk
 
 show-config: ## Show the current configuration
 	@echo "VERSION: ${VERSION}"
@@ -18,70 +19,6 @@ install-deps: ## install dependencies: golang, kubectl, helm (needs root)
 	&& tar -xf helm-v3.7.2-linux-amd64.tar.gz \
 	&& mv linux-amd64/helm /usr/local/bin/ && chmod +x /usr/local/bin/helm; fi
 
-##@ Cluster setup
-
-op-download: SOURCE := https://github.com/tarantool/tarantool-operator
-op-download: ## clone tarantool-operator from github
-	if [ ! -r tarantool-operator ]; then git clone ${SOURCE}; \
-	else cd tarantool-operator && git checkout . && git pull --rebase; fi
-
-op-build: ## Build docker image
-	REPO=${OPREPO} VERSION=${OPVER} \
-	 make -C tarantool-operator build
-	REPO=${OPREPO} VERSION=${OPVER} \
-	 make -C tarantool-operator docker-build
-
-op-push: ## Push docker to repo (default needs credentials)
-	docker push ${OPREPO}:${OPVER}
-
-op-install: OPCHART := tarantool-operator/helm-charts/tarantool-operator
-op-install: ## Helm install operator on Kubernetes
-	sed -e "s/@@VERSION@@/0.0.9-dyne/g" \
-	skel/operator-values.yaml > ${OPCHART}/values.yaml
-	helm install -n ${OPNS} operator ${OPCHART} \
-		--create-namespace \
-		--set image.repository=${OPREPO} \
-		--set image.tag=${OPVER}
-
-op-uninstall: ## Helm uninstall operator on Kubernetes
-	helm uninstall -n ${OPNS} operator
-
-op-restart: uninstall-kube install-kube ## Helm restart operator
-
-uninstall-all: # Helm uninstall all apps
-	for i in $(basename ${APPS}); do \
-	helm status -n zenswarm-$$i $$i \
-	&& helm uninstall -n zenswarm-$$i $$i; done
-	helm uninstall -n ${OPNS} operator
-
-##@ Cluster administration
-
-list: ## List all apps in our namespaces
-	@for i in $(basename ${APPS}); do \
-		echo "APP: \033[36m$$i\033[0m"; \
-		kubectl get all --namespace zenswarm-$$i; \
-	done
-
-list-pods: ## List pods in our namespace
-	@for i in $(basename ${APPS}); do \
-		echo "APP: \033[36m$$i\033[0m"; \
-		kubectl get pods --namespace zenswarm-$$i; \
-	done
-
-list-all: ## List all in all namespaces
-	kubectl get all --all-namespaces
-
-logs: ## Show logs for all running APPs
-	@for i in $(basename ${APPS}); do \
-		echo "APP: \033[36m$$i\033[0m"; \
-		pods=`kubectl get pods --namespace zenswarm-$$i | awk '/^NAME/{next} /^controller/{next} {print $$1}'`; \
-		for p in $$pods; do \
-			echo "pod: \033[36m$$p\033[0m"; \
-			kubectl logs $$p --namespace zenswarm-$$i; \
-		done; \
-		echo $$pods; \
-	done
-
 ##@ App management
 
 app-check:
@@ -91,7 +28,7 @@ app-check:
 	@echo "TAG: `cat ${APP}.app/tag.sha`" $(file <${APP}.app/tag.sha)
 
 app-hash: app-check
-	find ${APP}.app/cartridge -type f -print0 | sort -z | \
+	@find ${APP}.app/cartridge -type f -print0 | sort -z | \
 		xargs -0 sha1sum | sha1sum | awk '{print $$1}' | tee > ${APP}.app/tag.sha
 	@echo "NEW: " $(file <${APP}.app/tag.sha)
 
