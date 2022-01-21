@@ -86,28 +86,40 @@ app-check:
 	$(if $(wildcard ${APP}.app),, $(error "Cannot find app: ${APP}.app"))
 
 app-hash: app-check
-	find ${APP}.app/cartridge -type f -print0 | sort -z | \
+	@find ${APP}.app/cartridge -type f -print0 | sort -z | \
 		xargs -0 sha1sum | sha1sum | awk '{print $$1}' > ${APP}.app/tag.sha
+	@echo "APP ${APP} tag:" && cat ${APP}.app/tag.sha
 
-##@ App management
-
-app-create: ## Create a new app with APP
+app-check-empty:
 	$(if ${APP},,$(error "APP name undefined"))
 	$(if $(wildcard ${APP}.app), $(error "cannot overwrite app: ${APP}.app"))
-	@echo "Zenswarm create new app: ${APP}.app"
-	@$(call create-app,${APP},${VERSION})
+
+app-create-cartridge:
+	@mkdir -p ${APP}.app/chart
 	cartridge create ${APP}.app --name ${APP} \
 	&& mv ${APP}.app/${APP} ${APP}.app/cartridge
-	@echo "FROM centos:7" > ${APP}.app/cartridge/Dockerfile.build.cartridge
+	@echo "FROM centos:8" > ${APP}.app/cartridge/Dockerfile.build.cartridge
 	@echo "FROM dyne/tarantool:centos8" > ${APP}.app/cartridge/Dockerfile.cartridge
 	@ln -s cartridge/app/roles/custom.lua ${APP}.app/main.lua
 
-app-defaults: app-check ## Reset defaults in an existing app with APP
-	@echo "Zenswarm reset app: ${APP}.app"
-	@$(call create-app,${APP},${VERSION})
+app-create-chart:
+	@mkdir -p ${APP}.app/chart
+	@sed -e "s/@@APPNAME@@/${APP}/g" skel/chart/Chart.yaml \
+	| sed -e "s/@@VERSION@@/${VERSION}/g" > ${APP}.app/chart/Chart.yaml
+	@sed -e "s/@@APPNAME@@/${APP}/g" skel/chart/values.yaml \
+	| sed -e "s/@@VERSION@@/${VERSION}/g" > ${APP}.app/chart/values.yaml
+	@cp -ra skel/chart/templates ${APP}.app/chart/
 
+##@ App management
+
+app-create: app-check-empty app-create-cartridge app-hash ## Create a new app with APP
+
+app-defaults: app-check app-create-chart ## Reset defaults in an existing app with APP
+	@echo "Zenswarm reset app: ${APP}.app"
+
+app-build: app-hash
 app-build: APP_HASH := $(file <${APP}.app/tag.sha)
-app-build: app-hash ## Build Docker image from APP/cartridge
+app-build: ## Build Docker image from APP/cartridge
 	sed -i -e "0,/ZENSWARM_TAG/{s/ZENSWARM_TAG.*/ZENSWARM_TAG='${APP_HASH}'/}" \
 	${APP}.app/cartridge/app/roles/custom.lua
 	cartridge pack docker ${APP}.app/cartridge \
@@ -121,21 +133,24 @@ app-push: app-check ## Push the Docker image of APP
 app-install: APP_HASH := $(file <${APP}.app/tag.sha)
 app-install: app-check ## Install the Helm APP/chart in namespace zenswarm-APP
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm install -n zenswarm-${APP} benchmark ${APP}.app/chart --create-namespace 
+	helm install -n zenswarm-${APP} ${APP} ${APP}.app/chart --create-namespace 
+
+app-list: app-check
+	kubectl get all --namespace zenswarm-${APP};
 
 #--set LuaMemoryReserveMB=${RESMB}
 
 app-upgrade: APP_HASH := $(file <${APP}.app/tag.sha)
 app-upgrade: app-check ## Upgrade the Helm APP/chart in namespace zenswarm-APP
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm upgrade -n zenswarm-${APP} benchmark ${APP}.app/chart \
+	helm upgrade -n zenswarm-${APP} @{APP} ${APP}.app/chart \
 	--set image.tag=${APP_HASH} --set imagePullPolicy=Always \
 	--dependency-update --devel
 
 app-upgrade-force: APP_HASH := $(file <${APP}.app/tag.sha)
 app-upgrade-force: app-check ## Upgrade the Helm APP/chart in namespace zenswarm-APP
 	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm upgrade -n zenswarm-${APP} benchmark ${APP}.app/chart \
+	helm upgrade -n zenswarm-${APP} ${APP} ${APP}.app/chart \
 	--set image.tag=${APP_HASH} --set imagePullPolicy=Always --create-namespace \
 	--recreate-pods
 
@@ -144,3 +159,6 @@ app-status: app-check ## Check the status of installed APP
 
 app-uninstall: ## Uninstall the APP
 	helm uninstall -n zenswarm-${APP} ${APP}
+
+app-uninstall-force:
+	helm delete zenswarm-${APP} --purge --no-hooks
