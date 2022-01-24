@@ -27,7 +27,10 @@ op-install: ## Helm install operator on Kubernetes
 op-uninstall: ## Helm uninstall operator on Kubernetes
 	helm uninstall -n ${OPNS} operator
 
-op-restart: uninstall-kube install-kube ## Helm restart operator
+sleep10:
+	sleep 10
+
+op-restart: op-uninstall sleep10 op-install ## Helm restart operator
 
 op-status: ## Show status of operator
 	helm status -n ${OPNS} operator
