@@ -8,6 +8,7 @@ op-download: ## clone tarantool-operator from github
 op-build: ## Build docker image
 	REPO=${OPREPO} VERSION=${OPVER} \
 	 make -C tarantool-operator build
+	sed -i 's/golang:1.16/golang:1.17/' tarantool-operator/Dockerfile
 	REPO=${OPREPO} VERSION=${OPVER} \
 	 make -C tarantool-operator docker-build
 
