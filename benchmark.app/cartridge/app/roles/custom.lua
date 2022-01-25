@@ -1,4 +1,3 @@
-ZENSWARM_TAG='358129a1efb838291796017deca7d037f4965fff'
 local cartridge = require('cartridge')
 
 require'zenroom'
@@ -8,7 +7,7 @@ BENCH = require'bench'
 local function init(opts) -- luacheck: no unused args
     local httpd = assert(cartridge.service_get('httpd'), "Failed to get httpd service")
     httpd:route({method = 'GET', path = '/benchmark'}, function()
-	  local res = { tag = ZENSWARM_TAG }
+	  local res = { }
 	  local prime_start = os.clock()
 	  BENCH.math(1,100000)
 	  local prime_done = os.clock()

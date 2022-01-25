@@ -1,16 +1,24 @@
 
 ##@ App development
 
+# remove .app suffix from app name since completion often adds it
+ext := $(suffix ${APP})
+APP := $(if ${ext} = ".app",$(basename ${APP}),${APP})
+
 app-check:
 	$(if ${APP},,$(error "APP name undefined"))
 	$(if $(wildcard ${APP}.app),,$(error "Cannot find app: ${APP}.app"))
-	@echo "APP:  \033[36m${APP}\033[0m"
-	@echo "TAG: `cat ${APP}.app/tag.sha`" $(file <${APP}.app/tag.sha)
+	@echo "APP: \033[36m${APP}\033[0m"
+	@echo "TAG:" $(file <${APP}.app/tag.sha)
 
-app-hash: app-check
-	@find ${APP}.app/cartridge -type f -print0 | sort -z | \
-		xargs -0 sha1sum | sha1sum | awk '{print $$1}' | tee > ${APP}.app/tag.sha
-	@echo "NEW: " $(file <${APP}.app/tag.sha)
+app-hash:
+	@oldhash=$(shell cat ${APP}.app/tag.sha); \
+	newhash=$(shell find ${APP}.app/cartridge -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | awk '{print $$1}'); \
+	if ! [ $${newhash} = $${oldhash} ]; then \
+		echo "APP changed, new tag:"; \
+		echo $${newhash}; \
+		echo $${oldhash} "(old hash)"; \
+		echo $${newhash} > ${APP}.app/tag.sha; fi
 
 app-check-empty:
 	$(if ${APP},,$(error "APP name undefined"))
@@ -23,6 +31,7 @@ app-create-cartridge:
 	@echo "FROM centos:8" > ${APP}.app/cartridge/Dockerfile.build.cartridge
 	@echo "FROM dyne/tarantool:centos8" > ${APP}.app/cartridge/Dockerfile.cartridge
 	@ln -s cartridge/app/roles/custom.lua ${APP}.app/main.lua
+	@echo empty > ${APP}.app/tag.sha
 
 app-create-chart:
 	@mkdir -p ${APP}.app/chart
@@ -34,62 +43,13 @@ app-create-chart:
 
 app-create: app-check-empty app-create-cartridge app-create-chart app-hash ## Create a new app named APP
 
-app-defaults: app-check app-create-chart ## Reset defaults in an existing app with APP
+app-defaults: app-check app-create-chart app-hash ## Reset defaults in an existing app with APP
 	@echo "Zenswarm reset app: ${APP}.app"
 
-app-build: APP_HASH := $(file <${APP}.app/tag.sha)
-app-build: app-check ## Build Docker image from APP/cartridge
-	sed -i -e "0,/ZENSWARM_TAG/{s/ZENSWARM_TAG.*/ZENSWARM_TAG='${APP_HASH}'/}" \
-	${APP}.app/cartridge/app/roles/custom.lua
-	cartridge pack docker ${APP}.app/cartridge \
-	 --tag dyne/zenswarm-${APP}:${APP_HASH}
-	@echo "Zenswarm build app: dyne/zenswarm-${APP}:${APP_HASH}"
+app-build: app-check app-hash ## Build Docker image from APP/cartridge
+	@cartridge pack docker ${APP}.app/cartridge \
+	 --tag dyne/zenswarm-${APP}:$(file <${APP}.app/tag.sha)
+	@echo "Zenswarm build app: dyne/zenswarm-${APP}:" $(file <${APP}.app/tag.sha)
 
-##@ App management
-
-app-push: APP_HASH := $(file <${APP}.app/tag.sha)
-app-push: app-check ## Push the Docker image of APP
-	docker push ${APP_DOCKER_URL}/zenswarm-${APP}:${APP_HASH}
-
-app-install: APP_HASH := $(file <${APP}.app/tag.sha)
-app-install: app-check ## Install the Helm APP/chart in namespace zenswarm-APP
-	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm install -n zenswarm-${APP} ${APP} ${APP}.app/chart --create-namespace 
-
-app-port-fwd: app-check ## Open access to APP via localhost (Ctrl-C to stop)
-	kubectl port-forward routers-0-0 -n zenswarm-${APP} --address 0.0.0.0 8081
-
-app-list: app-check
-	kubectl get all --namespace zenswarm-${APP};
-
-app-logs: app-check ## Show logs of all running pods of APP
-	@pods=`kubectl get pods --namespace zenswarm-${APP} | awk '/^NAME/{next} /^controller/{next} {print $$1}'`; \
-	for p in $$pods; do \
-		echo "pod: \033[36m$$p\033[0m"; \
-		kubectl logs $$p --namespace zenswarm-${APP}; \
-	done
-
-app-restart: app-uninstall app-install
-
-app-upgrade: APP_HASH := $(file <${APP}.app/tag.sha)
-app-upgrade: app-check
-	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm upgrade -n zenswarm-${APP} @{APP} ${APP}.app/chart \
-	--set image.tag=${APP_HASH} --set imagePullPolicy=Always \
-	--recreate-pods
-
-app-upgrade-f: APP_HASH := $(file <${APP}.app/tag.sha)
-app-upgrade-f: app-check
-	sed -i -e "s/  tag:.*/  tag: ${APP_HASH}/" ${APP}.app/chart/values.yaml
-	helm upgrade -n zenswarm-${APP} ${APP} ${APP}.app/chart \
-	--set image.tag=${APP_HASH} --set imagePullPolicy=Always --create-namespace \
-	--recreate-pods
-
-app-status: app-check ## Check the status of installed APP
-	helm status -n zenswarm-${APP} ${APP}
-
-app-uninstall: ## Uninstall the APP
-	helm uninstall -n zenswarm-${APP} ${APP}
-
-app-uninstall-f: ## Force uninstall the APP (--no-hooks)
-	helm uninstall -n zenswarm-${APP} ${APP} --no-hooks
+# sed -i -e "0,/ZENSWARM_TAG/{s/ZENSWARM_TAG.*/ZENSWARM_TAG='$(file <${APP}.app/tag.sha)'/}" \
+#  ${APP}.app/cartridge/app/roles/custom.lua \

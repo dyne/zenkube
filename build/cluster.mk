@@ -1,36 +1,50 @@
 ##@ Cluster setup
 
+OPHASH := tarantool-operator/tag.sha
+
 op-download: SOURCE := https://github.com/tarantool/tarantool-operator
 op-download: ## clone tarantool-operator from github
 	if [ ! -r tarantool-operator ]; then git clone ${SOURCE}; \
 	else cd tarantool-operator && git checkout . && git pull --rebase; fi
 
-op-build: ## Build docker image
-	REPO=${OPREPO} VERSION=${OPVER} \
+op-hash:
+	@oldhash=$(shell cat tarantool-operator/tag.sha); \
+	newhash=$(shell find tarantool-operator/api tarantool-operator/assets tarantool-operator/config tarantool-operator/controllers tarantool-operator/helm-charts -type f -print0 | sort -z | xargs -0 sha1sum | sha1sum | awk '{print $$1}'); \
+	if ! [ ${newhash} = ${oldhash} ]; then \
+		echo "Operator changed, new tag:"; \
+		echo ${newhash}; \
+		echo ${oldhash} "(old hash)"; \
+		echo ${newhash} > tarantool-operator/tag.sha; fi
+
+op-build: op-hash ## Build docker image
+	REPO=${OPREPO} VERSION=${OPVER}-$(file <${OPHASH}) \
 	 make -C tarantool-operator build
 	sed -i 's/golang:1.16/golang:1.17/' tarantool-operator/Dockerfile
-	REPO=${OPREPO} VERSION=${OPVER} \
+	REPO=${OPREPO} VERSION=${OPVER}-$(file <${OPHASH}) \
 	 make -C tarantool-operator docker-build
 
 op-push: ## Push docker to repo (default needs credentials)
-	docker push ${OPREPO}:${OPVER}
+	docker push ${OPREPO}:${OPVER}-$(file <${OPHASH})
 
-op-install: OPCHART := tarantool-operator/helm-charts/tarantool-operator
-op-install: ## Helm install operator on Kubernetes
-	sed -e "s/@@VERSION@@/0.0.9-dyne/g" \
-	skel/operator-values.yaml > ${OPCHART}/values.yaml
+OPCHART := tarantool-operator/helm-charts/tarantool-operator
+
+op-configure: 
+	@echo "Configuring Tarantool Operator"
+	@echo "Version: ${OPVER}-$(file <${OPHASH})"
+	@echo "Docker repo: ${APP_DOCKER_URL}"
+	@sed -e "s/@@VERSION@@/${OPVER}-$(file <${OPHASH})/g" skel/operator-values.yaml \
+	| sed -e "s/@@APP_DOCKER_URL@@/${APP_DOCKER_URL}/" > ${OPCHART}/values.yaml
+
+op-install: op-configure ## Helm install operator on Kubernetes
 	helm install -n ${OPNS} operator ${OPCHART} \
 		--create-namespace \
 		--set image.repository=${OPREPO} \
-		--set image.tag=${OPVER}
+		--set image.tag=${OPVER}-$(file <${OPHASH})
 
 op-uninstall: ## Helm uninstall operator on Kubernetes
-	helm uninstall -n ${OPNS} operator
+	-helm uninstall -n ${OPNS} operator
 
-sleep10:
-	sleep 10
-
-op-restart: op-uninstall sleep10 op-install ## Helm restart operator
+op-restart: op-uninstall op-install ## Helm restart operator
 
 op-status: ## Show status of operator
 	helm status -n ${OPNS} operator
@@ -41,12 +55,6 @@ op-logs: ## Show logs of operator
 		echo "pod: \033[36m$$p\033[0m"; \
 		kubectl logs $$p --namespace ${OPNS}; \
 	done
-
-uninstall-all: # Helm uninstall all apps
-	for i in $(basename ${APPS}); do \
-	helm status -n zenswarm-$$i $$i \
-	&& helm uninstall -n zenswarm-$$i $$i; done
-	helm uninstall -n ${OPNS} operator
 
 ##@ Cluster administration
 
@@ -75,3 +83,5 @@ logs: ## Show logs for all running APPs
 		done; \
 		echo $$pods; \
 	done
+
+uninstall-all: app-uninstall-a op-uninstall ## Uninstall all apps and operator
