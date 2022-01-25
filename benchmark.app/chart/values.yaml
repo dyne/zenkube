@@ -4,11 +4,11 @@ ClusterEnv: dev
 ClusterName: tarantool-cluster
 ClusterDomainName: cluster.local
 TarantoolWorkDir: /var/lib/tarantool
-LuaMemoryReserveMB: 2048
+LuaMemoryReserveMB: 0
 
 image:
   repository: dyne/zenswarm-benchmark
-  tag: 358129a1efb838291796017deca7d037f4965fff
+  tag: adfa0b6a121ea3d71b272db216672f9c30a1ff9a
   pullPolicy: Always
 
 service:
@@ -23,19 +23,21 @@ RoleConfig:
   - RoleName: routers     # ReplicaSet name
     ReplicaCount: 1       # Number of replicas in each ReplicaSet
     ReplicaSetCount: 1    # Number of ReplicaSets for this role(s)
-    DiskSize: 1Gi         # Persistent Volume disk sze
-    CPUallocation: 0.25   # Number of vCPUs to allocate to each container
+    DiskSize: 256Mi         # Persistent Volume disk sze
+    CPUallocation: 0.10   # Number of vCPUs to allocate to each container
     MemtxMemoryMB: 256    # MB of memory to be assigned to each container
     RolesToAssign:
       - app.roles.custom
-      - router
+
+ #     - vshard-router
 
   - RoleName: storage
     ReplicaCount: 2
     ReplicaSetCount: 1
-    DiskSize: 1Gi
-    CPUallocation: 0.25
+    DiskSize: 256Mi
+    CPUallocation: 0.10
     MemtxMemoryMB: 256
     RolesToAssign:
       - app.roles.custom
-      - storage
+
+ #     - vshard-storage

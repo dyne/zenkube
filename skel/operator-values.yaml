@@ -1,4 +1,4 @@
 image:
   repository: dyne/tarantool-operator
   tag: @@VERSION@@
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
