@@ -5,8 +5,11 @@ JSON = require'json'
 BENCH = require'bench'
 
 local function init(opts) -- luacheck: no unused args
+    -- if opts.is_master then
+    -- end
+
     local httpd = assert(cartridge.service_get('httpd'), "Failed to get httpd service")
-    httpd:route({method = 'GET', path = '/benchmark'}, function()
+    httpd:route({method = 'GET', path = '/test'}, function()
 	  local res = { }
 	  local prime_start = os.clock()
 	  BENCH.math(1,100000)

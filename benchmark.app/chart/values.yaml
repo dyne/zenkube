@@ -8,7 +8,7 @@ LuaMemoryReserveMB: 0
 
 image:
   repository: dyne/zenswarm-benchmark
-  tag: adfa0b6a121ea3d71b272db216672f9c30a1ff9a
+  tag: 7100556519119b04b5192feee1100fd269312c54
   pullPolicy: Always
 
 service:
