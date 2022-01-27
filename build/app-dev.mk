@@ -31,6 +31,7 @@ app-create-cartridge:
 	@echo "FROM centos:8" > ${APP}.app/cartridge/Dockerfile.build.cartridge
 	@echo "FROM dyne/tarantool:centos8" > ${APP}.app/cartridge/Dockerfile.cartridge
 	@ln -s cartridge/app/roles/custom.lua ${APP}.app/main.lua
+	@rm -rf ${APP}.app/cartridge/.git ${APP}.app/cartridge/.cartridge
 	@echo empty > ${APP}.app/tag.sha
 
 app-create-chart:
