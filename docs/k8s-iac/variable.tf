@@ -18,7 +18,7 @@ variable "node_groups" {
             min_capacity     = 1
 
             instance_types = ["t3.large"]
-            capacity_type  = "DEMAND"
+            capacity_type  = "ON_DEMAND"
             update_config = {
                 max_unavailable_percentage = 50 # or set `max_unavailable`
             }
